@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sun–Earth–Moon Simulation</title>
+<style>
+  body { margin: 0; overflow: hidden; background: black; }
+  #ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: white;
+    z-index: 10;
+  }
+</style>
+<!-- Import map to resolve 'three' from OrbitControls -->
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.158/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158/examples/jsm/"
+    }
+  }
+</script>
+</head>
+<body>
+
+<div id="pipOverlay" style="position: absolute; bottom: 20px; right: 20px; width: 30%; height: 30%; pointer-events: none; padding: 10px; box-sizing: border-box; text-align: left; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10;">
+  <span id="pipSunEvent" style="color: #ffcc00; font-size: 1.5em; font-weight: bold;"></span>
+</div>
+
+<div id="moonTimeLabel" style="position: absolute; color: #ffff00; font-family: monospace; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 12; text-align: center; background: rgba(0,0,0,0.65); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); box-sizing: border-box;"></div>
+<div id="moonDateLabel" style="position: absolute; color: #ffffff; font-family: monospace; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 12; text-align: center; background: rgba(0,0,0,0.65); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); box-sizing: border-box;"></div>
+<div id="moonPhaseLabel" style="position: absolute; color: #ffcc00; font-family: monospace; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 12; text-align: center; background: rgba(0,0,0,0.65); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); box-sizing: border-box;"></div>
+
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const scene = new THREE.Scene();
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.autoClear = false; // Required for Picture-in-Picture
+document.body.appendChild(renderer.domElement);
+
+// Time & Orbital Parameters initialized to match the constellation of the user image
+let daysPassed = 145.7604;
+let earthRotation = 145 * 2 * Math.PI + (18.25 * Math.PI / 12);
+let moonOrbit = 3.2100;
+
+// Cameras
+const cameraExternal = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+cameraExternal.position.set(-5.43, 3.80, -13.19);
+cameraExternal.lookAt(-1.10, 0.55, -7.87);
+
+const cameraEarth = new THREE.PerspectiveCamera(160, window.innerWidth/window.innerHeight, 0.1, 1000);
+const cameraMoonCam = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+
+let activeCamera = cameraExternal;
+
+// Controls
+const controls = new OrbitControls(cameraExternal, renderer.domElement);
+controls.target.set(-1.10, 0.55, -7.87);
+controls.update();
+
+// Lighting
+// Modern Three.js requires higher light intensities.
+const sunLight = new THREE.PointLight(0xffffff, 500); 
+scene.add(sunLight);
+
+// Add ambient light so the unlit sides aren't pitch black
+scene.add(new THREE.AmbientLight(0xffffff, 0.15));
+
+// Stars Background
+const starsGeometry = new THREE.BufferGeometry();
+const starsCount = 2000;
+const posArray = new Float32Array(starsCount * 3);
+for(let i = 0; i < starsCount; i++) {
+    const r = 40 + Math.random() * 60;
+    const theta = 2 * Math.PI * Math.random();
+    const phi = Math.acos(2 * Math.random() - 1);
+    posArray[i*3] = r * Math.sin(phi) * Math.cos(theta);
+    posArray[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+    posArray[i*3+2] = r * Math.cos(phi);
+}
+starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+const starsMaterial = new THREE.PointsMaterial({ size: 1.0, sizeAttenuation: false, color: 0xffffff });
+const starField = new THREE.Points(starsGeometry, starsMaterial);
+scene.add(starField);
+
+// Sun
+const sun = new THREE.Mesh(
+  new THREE.SphereGeometry(3, 32, 32),
+  new THREE.MeshBasicMaterial({ color: 0xffffcc })
+);
+scene.add(sun);
+
+// Load Textures from Three.js examples repository
+const textureLoader = new THREE.TextureLoader();
+const earthTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg');
+const moonTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/moon_1024.jpg');
+
+// Sun Pivot (Allows Earth system to orbit the Sun)
+const sunPivot = new THREE.Object3D();
+sunPivot.rotation.y = 73.76875 * 2 * Math.PI / (29.5 * 12);
+scene.add(sunPivot);
+
+// Earth System (Groups Earth and Moon to move them around Sun, but doesn't spin)
+const earthSystem = new THREE.Object3D();
+earthSystem.position.set(10, 0, 0);
+sunPivot.add(earthSystem);
+
+// Tilted Earth Group (Axial tilt of 23.5 degrees)
+const tiltedEarthGroup = new THREE.Object3D();
+tiltedEarthGroup.rotation.z = -23.5 * Math.PI / 180;
+earthSystem.add(tiltedEarthGroup);
+
+// Earth Mesh (Spins independently on its axis inside the tilted group)
+const earth = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 32, 32),
+  new THREE.MeshStandardMaterial({ 
+    map: earthTexture,
+    roughness: 0.6,
+    metalness: 0.1
+  })
+);
+earth.rotation.y = earthRotation;
+tiltedEarthGroup.add(earth);
+
+// Moon Orbit System (tilts the Moon's orbit relative to the ecliptic)
+const moonOrbitGroup = new THREE.Object3D();
+// Exaggerated to 25 degrees to completely clear the massive Sun and avoid eclipses
+moonOrbitGroup.rotation.z = 25 * Math.PI / 180; // Lunar orbital tilt
+earthSystem.add(moonOrbitGroup);
+
+// Visible Moon Orbit Path
+const moonOrbitPath = new THREE.Mesh(
+  new THREE.RingGeometry(1.98, 2.02, 64),
+  new THREE.MeshBasicMaterial({ color: 0x888888, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })
+);
+moonOrbitPath.rotation.x = Math.PI / 2;
+moonOrbitGroup.add(moonOrbitPath);
+window.moonOrbitPath = moonOrbitPath;
+
+// Phase Labels on Moon Orbit
+function createPhaseLabel(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.font = "Bold 28px Arial";
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 128, 32);
+  const texture = new THREE.CanvasTexture(canvas);
+  const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.scale.set(2, 0.5, 1);
+  return sprite;
+}
+
+window.phaseLabels = [];
+
+// Moon pivot
+const moonPivot = new THREE.Object3D();
+moonPivot.rotation.y = moonOrbit;
+moonOrbitGroup.add(moonPivot);
+
+// Moon
+const moon = new THREE.Mesh(
+  new THREE.SphereGeometry(0.27, 32, 32),
+  new THREE.MeshStandardMaterial({ 
+    map: moonTexture,
+    roughness: 0.8,
+    metalness: 0.0
+  })
+);
+moon.position.set(2, 0, 0);
+moonPivot.add(moon);
+
+// Function to create a circular canvas texture for Sprites
+function createCircleTexture(colorHex) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.beginPath();
+  ctx.arc(128, 128, 128, 0, Math.PI * 2);
+  ctx.fillStyle = colorHex;
+  ctx.fill();
+  return new THREE.CanvasTexture(canvas);
+}
+
+// 2D Sprites to prevent FOV distortion in the PIP view
+const sunSpriteMat = new THREE.SpriteMaterial({ map: createCircleTexture('#ffffcc'), sizeAttenuation: true });
+window.sunSprite = new THREE.Sprite(sunSpriteMat);
+window.sunSprite.scale.set(6, 6, 1); // Match 3D diameter
+sun.add(window.sunSprite);
+
+// Dynamic 2D Moon Sprite for distortion-free phase representation in Earth view
+const moonCanvas = document.createElement('canvas');
+moonCanvas.width = 256;
+moonCanvas.height = 256;
+const moonSpriteTexture = new THREE.CanvasTexture(moonCanvas);
+const moonSpriteMat = new THREE.SpriteMaterial({ map: moonSpriteTexture, sizeAttenuation: true });
+window.moonSprite = new THREE.Sprite(moonSpriteMat);
+window.moonSprite.scale.set(0.54, 0.54, 1); // Match 3D diameter (0.27 * 2)
+moon.add(window.moonSprite);
+
+function updateMoonSprite(phaseAngleDeg) {
+  const canvas = moonCanvas;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const r = canvas.width / 2 - 4;
+  
+  // Base dark circle representing unlit side of the Moon
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#222222';
+  ctx.fill();
+  
+  let angle = phaseAngleDeg % 360;
+  if (angle < 0) angle += 360;
+  
+  ctx.fillStyle = '#dddddd';
+  if (angle === 180) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (angle !== 0) {
+    const isRightLit = (angle > 0 && angle < 180);
+    const cosVal = Math.cos(angle * Math.PI / 180);
+    
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, !isRightLit);
+    ctx.ellipse(cx, cy, r * Math.abs(cosVal), r, 0, Math.PI / 2, -Math.PI / 2, isRightLit ? (cosVal > 0) : (cosVal < 0));
+    ctx.closePath();
+    ctx.fill();
+  }
+  moonSpriteTexture.needsUpdate = true;
+}
+
+// Speed Mode variables & handler
+let speedMode = 'hours';
+window.setSpeedMode = function(mode) {
+  speedMode = mode;
+  const speedEl = document.getElementById('speedValue');
+  if (speedEl) {
+    speedEl.innerText = mode.charAt(0).toUpperCase() + mode.slice(1);
+  }
+};
+// Trigger initial active state
+setTimeout(() => setSpeedMode('hours'), 0);
+
+// --- Earth Clock Group (Non-spinning ring + numbers 1-24) ---
+// Added to tiltedEarthGroup so it is perfectly coplanar with the Earth's equator!
+const clockGroup = new THREE.Object3D();
+tiltedEarthGroup.add(clockGroup);
+window.clockGroup = clockGroup;
+
+// Yellow ring representing the circle
+const clockRingGeom = new THREE.RingGeometry(1.49, 1.51, 64);
+const clockRingMat = new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide });
+const clockRing = new THREE.Mesh(clockRingGeom, clockRingMat);
+clockRing.rotation.x = Math.PI / 2;
+clockGroup.add(clockRing);
+
+// Helper for clock labels
+function createClockLabel(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  
+  ctx.font = "Bold 36px Arial";
+  ctx.strokeStyle = "rgba(0,0,0,0.8)";
+  ctx.lineWidth = 6;
+  ctx.strokeText(text, 32, 32);
+  
+  ctx.fillStyle = "#ffff00";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 32, 32);
+  
+  const texture = new THREE.CanvasTexture(canvas);
+  const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.scale.set(0.2, 0.2, 1);
+  return sprite;
+}
+
+// Generate labels for hours 1 to 24
+for (let h = 1; h <= 24; h++) {
+  const label = createClockLabel(h.toString());
+  const theta = (24 - h) * Math.PI / 12;
+  const radius = 1.65;
+  label.position.set(radius * Math.cos(theta), 0, radius * Math.sin(theta));
+  clockGroup.add(label);
+}
+
+// Horizon Plane for Observer
+// A large flat transparent disc representing the ground plane
+// A massive solid disc representing the ground plane to block stars and simulate the horizon
+const horizonPlane = new THREE.Mesh(
+  new THREE.RingGeometry(0.98, 5000, 64),
+  new THREE.MeshBasicMaterial({ color: 0x011a01, side: THREE.DoubleSide }) // Solid dark green
+);
+horizonPlane.position.set(1.0, 0, 0); // Placed at observer's local equator
+horizonPlane.rotation.y = Math.PI / 2; // Flat tangential to surface
+earth.add(horizonPlane);
+
+// Visual Debug Arrows removed by user request
+
+// View Direction Arrow (Blue) - Added directly to Earth as a clock hour hand pointing to the numbers on the yellow circle!
+const viewArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(1.0,0,0), 0.5, 0x00aaff, 0.15, 0.1);
+earth.add(viewArrow);
+
+// Sun Direction Arrow (dynamic transition arrow, added to earthSystem to point from Earth's center to the Sun)
+const sunArrow = new THREE.ArrowHelper(new THREE.Vector3(-1,0,0), new THREE.Vector3(0,0,0), 0.5, 0x00aaff, 0.15, 0.1);
+earthSystem.add(sunArrow);
+window.sunArrow = sunArrow;
+
+// Create dynamic text sprite for the Sun arrow tip (Sunrise/Sunset labels) - Tripled in size
+const sunArrowCanvas = document.createElement('canvas');
+sunArrowCanvas.width = 512;
+sunArrowCanvas.height = 128;
+const sunArrowTexture = new THREE.CanvasTexture(sunArrowCanvas);
+const sunArrowSpriteMat = new THREE.SpriteMaterial({ 
+  map: sunArrowTexture, 
+  transparent: true,
+  depthTest: false 
+});
+const sunArrowSprite = new THREE.Sprite(sunArrowSpriteMat);
+sunArrowSprite.scale.set(4.5, 1.125, 1); // Tripled from 1.5, 0.375
+earthSystem.add(sunArrowSprite);
+window.sunArrowSprite = sunArrowSprite;
+
+// Moon Direction Arrow (dynamic transition arrow, added to earthSystem to point from Earth's center to the Moon)
+const moonArrow = new THREE.ArrowHelper(new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,0), 0.5, 0xdddddd, 0.15, 0.1);
+earthSystem.add(moonArrow);
+window.moonArrow = moonArrow;
+
+// Create dynamic text sprite for the angle indication between Sun and Moon arrows
+const angleCanvas = document.createElement('canvas');
+angleCanvas.width = 512;
+angleCanvas.height = 128;
+const angleTexture = new THREE.CanvasTexture(angleCanvas);
+const angleSpriteMat = new THREE.SpriteMaterial({ 
+  map: angleTexture, 
+  transparent: true,
+  depthTest: false 
+});
+const angleSprite = new THREE.Sprite(angleSpriteMat);
+angleSprite.scale.set(3.0, 0.75, 1);
+earthSystem.add(angleSprite);
+window.angleSprite = angleSprite;
+
+// Create dynamic arc geometry connecting the Sun and Moon arrows
+const arcSegments = 32;
+const arcGeometry = new THREE.BufferGeometry();
+const arcPositions = new Float32Array((arcSegments + 1) * 3);
+arcGeometry.setAttribute('position', new THREE.BufferAttribute(arcPositions, 3));
+const arcMaterial = new THREE.LineBasicMaterial({
+  color: 0xffcc00,
+  transparent: true,
+  opacity: 0.0,
+  depthTest: false
+});
+const arcLine = new THREE.Line(arcGeometry, arcMaterial);
+earthSystem.add(arcLine);
+window.arcLine = arcLine;
+
+let lastAngleText = "";
+function updateAngleText(text) {
+  if (lastAngleText === text) return;
+  lastAngleText = text;
+  
+  const canvas = angleCanvas;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  if (text) {
+    ctx.font = "Bold 48px Arial";
+    ctx.strokeStyle = "rgba(0,0,0,0.8)";
+    ctx.lineWidth = 8;
+    ctx.strokeText(text, 256, 64);
+    
+    ctx.fillStyle = "#ffcc00"; // warm amber/yellow
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, 256, 64);
+  }
+  angleTexture.needsUpdate = true;
+}
+
+let lastSunArrowText = "";
+let lastSunArrowColor = "";
+function updateSunArrowText(text, colorHex) {
+  if (lastSunArrowText === text && lastSunArrowColor === colorHex) return;
+  lastSunArrowText = text;
+  lastSunArrowColor = colorHex;
+  
+  const canvas = sunArrowCanvas;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  if (text) {
+    ctx.font = "Bold 56px Arial";
+    ctx.strokeStyle = "rgba(0,0,0,0.8)";
+    ctx.lineWidth = 10;
+    ctx.strokeText(text, 256, 64);
+    
+    ctx.fillStyle = colorHex;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, 256, 64);
+  }
+  sunArrowTexture.needsUpdate = true;
+}
+
+// Time (declared globally at top of file)
+
+window.toggleCamera = function() {
+  activeCamera = (activeCamera === cameraExternal) ? cameraEarth : cameraExternal;
+};
+
+function updateEarthCamera() {
+  // 1. Observer is at the local equator (+X axis) dolled back to expose more sky
+  const localObserverPos = new THREE.Vector3(0.82, 0, 0);
+  const observerPos = earth.localToWorld(localObserverPos.clone());
+  cameraEarth.position.copy(observerPos);
+
+  // 2. Fixed head angle (Looking East / Sunrise)
+  const headAngleDeg = 270;
+  const headAngleRad = headAngleDeg * Math.PI / 180;
+
+  // 3. Define Zenith (straight up, perpendicular to surface)
+  const zenithDir = new THREE.Vector3(1, 0, 0).transformDirection(earth.matrixWorld);
+  window.currentZenithDir = zenithDir.clone();
+  
+  // The camera now looks straight UP (perpendicular to the surface)
+  const lookTarget = observerPos.clone().add(zenithDir);
+  
+  // The "Up" vector of the camera is determined by the head angle
+  // Local map: North=+Y, West=+Z, South=-Y, East=-Z
+  const localUp = new THREE.Vector3(0, Math.cos(headAngleRad), Math.sin(headAngleRad));
+  const worldUp = localUp.clone().transformDirection(earth.matrixWorld);
+  
+  cameraEarth.up.copy(worldUp);
+  cameraEarth.lookAt(lookTarget);
+
+  // 5. Update View Arrow (No manual update needed; viewArrow is a child of earth and spins/tilts automatically)
+}
+
+// daysPassed is initialized globally at top of file
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  // --- Dynamic Speed Control ---
+  const sunDir = new THREE.Vector3();
+  sun.getWorldPosition(sunDir);
+  const earthPosWorld = new THREE.Vector3();
+  earth.getWorldPosition(earthPosWorld);
+  const moonPosWorld = new THREE.Vector3();
+  moon.getWorldPosition(moonPosWorld);
+
+  const toSun = sunDir.clone().sub(earthPosWorld).normalize();
+  const toMoon = moonPosWorld.clone().sub(earthPosWorld).normalize();
+
+  // Zenith direction for current sunElevation
+  const zenithDir = new THREE.Vector3(1, 0, 0).transformDirection(earth.matrixWorld);
+  const sunElevation = toSun.dot(zenithDir);
+  window.currentZenithDir = zenithDir; // Save for camera setup
+
+  // Dynamic sky color calculation
+  const eastDir = new THREE.Vector3(0, 0, 1).transformDirection(earth.matrixWorld);
+  const isSunrise = (toSun.dot(eastDir) < 0);
+  const transitionColor = isSunrise ? new THREE.Color(0xffff00) : new THREE.Color(0xff4500);
+  const skyColor = new THREE.Color(0x000000);
+  if (sunElevation > -0.2 && sunElevation <= 0.0) {
+      const t = (sunElevation + 0.2) / 0.2;
+      skyColor.copy(new THREE.Color(0x000000)).lerp(transitionColor, t);
+  } else if (sunElevation > 0.0 && sunElevation <= 0.2) {
+      const t = sunElevation / 0.2;
+      skyColor.copy(transitionColor).lerp(new THREE.Color(0x87CEEB), t);
+  } else if (sunElevation > 0.2) {
+      skyColor.setHex(0x87CEEB);
+  }
+  window.currentSkyColor = skyColor;
+
+  // Calculate phase angle (2D projection on orbital plane)
+  const sunDir2D = new THREE.Vector2(toSun.x, toSun.z).normalize();
+  const moonDir2D = new THREE.Vector2(toMoon.x, toMoon.z).normalize();
+  let angleBetween = Math.atan2(moonDir2D.y, moonDir2D.x) - Math.atan2(sunDir2D.y, sunDir2D.x);
+  if (angleBetween < 0) angleBetween += Math.PI * 2;
+  let phaseAngleDeg = angleBetween * 180 / Math.PI;
+
+  let absAngleDeg = Math.min(phaseAngleDeg, 360 - phaseAngleDeg);
+  let isNearNewOrFull = (absAngleDeg < 20.0 || absAngleDeg > 160.0);
+
+  let targetSpeedMode = 'days';
+  if (isNearNewOrFull) {
+    if (Math.abs(sunElevation) <= 0.18) {
+      targetSpeedMode = 'minutes';
+    } else {
+      targetSpeedMode = 'hours';
+    }
+  } else {
+    targetSpeedMode = 'days';
+  }
+
+  if (speedMode !== targetSpeedMode) {
+    setSpeedMode(targetSpeedMode);
+  }
+
+  // Speed calculation based on current toggle mode
+  let speed = 1.0;
+  if (speedMode === 'minutes') {
+    speed = 0.02;
+  } else if (speedMode === 'hours') {
+    speed = 0.5;
+  } else {
+    speed = 4.0;
+  }
+
+  // --- 1. Realistic Time Scales (All counter-clockwise standard astronomical rotation) ---
+  const EARTH_ROT_SPEED = 0.05 * speed;            // 1 day
+  const MOON_ORBIT_SPEED = EARTH_ROT_SPEED / 29.5; // 1 month
+  const EARTH_ORBIT_SPEED = MOON_ORBIT_SPEED / 12; // 1 year (approx)
+
+  earthRotation += EARTH_ROT_SPEED;
+  earth.rotation.y = earthRotation;
+
+  sunPivot.rotation.y += EARTH_ORBIT_SPEED;
+
+  moonOrbit += MOON_ORBIT_SPEED;
+  moonPivot.rotation.y = moonOrbit;
+
+  // Tidal locking
+  moon.rotation.y = moonOrbit;
+
+  daysPassed += (EARTH_ROT_SPEED / (Math.PI * 2));
+  const timeEl = document.getElementById("time");
+  if (timeEl) timeEl.innerText = `${daysPassed.toFixed(1)} days`;
+  
+  let phaseName = "";
+  if (phaseAngleDeg < 30 || phaseAngleDeg > 330) phaseName = "New Moon";
+  else if (phaseAngleDeg > 150 && phaseAngleDeg < 210) phaseName = "Full Moon";
+  else if (Math.abs(phaseAngleDeg - 90) < 5) phaseName = "First Quarter";
+  else if (Math.abs(phaseAngleDeg - 270) < 5) phaseName = "Last Quarter";
+  else if (phaseAngleDeg >= 30 && phaseAngleDeg <= 90) phaseName = "Waxing Crescent";
+  else if (phaseAngleDeg > 90 && phaseAngleDeg <= 150) phaseName = "Waxing Gibbous";
+  else if (phaseAngleDeg >= 210 && phaseAngleDeg < 270) phaseName = "Waning Gibbous";
+  else phaseName = "Waning Crescent";
+
+  const phaseEl = document.getElementById("phase");
+  if (phaseEl) phaseEl.innerText = `${phaseAngleDeg.toFixed(1)}° (${phaseName})`;
+
+  // Update dynamic 2D Moon Sprite phase representation
+  updateMoonSprite(phaseAngleDeg);
+
+  // Sunrise/Sunset detection - Prolonged to -0.18 to 0.18 elevation, only Sunrise/Sunset displayed
+  let sunEventText = "";
+  if (sunElevation > -0.18 && sunElevation <= 0.18) {
+     const eastDir = new THREE.Vector3(0, 0, 1).transformDirection(earth.matrixWorld);
+     if (toSun.dot(eastDir) < 0) sunEventText = "Sunrise";
+     else sunEventText = "Sunset";
+  }
+  document.getElementById("pipSunEvent").innerText = sunEventText ? `Sky: ${sunEventText}` : "";
+  window.sunEventText = sunEventText;
+
+  // Calculate local direction to Sun for sunArrow
+  const localToSun = earthSystem.worldToLocal(sunDir.clone()).normalize();
+  sunArrow.setDirection(localToSun);
+
+  // Dynamic sunArrow extension during Sunrise/Sunset in "minutes" mode
+  let targetSunArrowLength = 0.5;
+  if (speedMode === 'minutes' && (sunEventText === 'Sunrise' || sunEventText === 'Sunset')) {
+    targetSunArrowLength = 10.0; // Extend from Earth's center to reach the Sun (distance ~10)
+  }
+  if (window.currentSunArrowLength === undefined) {
+    window.currentSunArrowLength = 0.5;
+  }
+  window.currentSunArrowLength += (targetSunArrowLength - window.currentSunArrowLength) * 0.05;
+  
+  // Update arrow length and preserve arrowhead visibility at long distances
+  const sunHeadLength = 0.15 + (window.currentSunArrowLength - 0.5) * (0.25 / 9.5);
+  const sunHeadWidth = 0.1 + (window.currentSunArrowLength - 0.5) * (0.15 / 9.5);
+  sunArrow.setLength(window.currentSunArrowLength, sunHeadLength, sunHeadWidth);
+
+  // Interpolate color based on sunElevation: Blue (0x00aaff) at day, Black (0x000000) at night
+  const tColor = Math.max(0, Math.min(1, (sunElevation - (-0.18)) / 0.36));
+  const arrowColor = new THREE.Color(0x000000).lerp(new THREE.Color(0x00aaff), tColor);
+  sunArrow.setColor(arrowColor);
+
+  // Position and update sunArrowSprite at the tip of the arrow
+  let labelColor = "#" + arrowColor.getHexString();
+  if (sunEventText === "Sunrise") {
+    labelColor = "#ffff00";
+  } else if (sunEventText === "Sunset") {
+    labelColor = "#ff0000";
+  }
+  const eventNameText = (sunEventText === "Sunrise" || sunEventText === "Sunset") ? sunEventText : "";
+  updateSunArrowText(eventNameText, labelColor);
+  
+  // Position slightly past the tip of the arrow (e.g. currentSunArrowLength + 0.4) so it doesn't overlap the head
+  const spritePos = localToSun.clone().multiplyScalar(window.currentSunArrowLength + 0.4);
+  sunArrowSprite.position.copy(spritePos);
+  
+  // Fade opacity matching the extension
+  const arrowT = (window.currentSunArrowLength - 0.5) / 9.5;
+  sunArrowSprite.material.opacity = Math.max(0, Math.min(1, arrowT));
+
+  // Calculate local direction to Moon for moonArrow
+  const localToMoon = earthSystem.worldToLocal(moonPosWorld.clone()).normalize();
+  moonArrow.setDirection(localToMoon);
+
+  // Dynamic moonArrow extension during Sunrise/Sunset in "minutes" mode
+  let targetMoonArrowLength = 0.5;
+  if (speedMode === 'minutes' && (sunEventText === 'Sunrise' || sunEventText === 'Sunset')) {
+    targetMoonArrowLength = 10.0;
+  }
+  if (window.currentMoonArrowLength === undefined) {
+    window.currentMoonArrowLength = 0.5;
+  }
+  window.currentMoonArrowLength += (targetMoonArrowLength - window.currentMoonArrowLength) * 0.05;
+  
+  const moonHeadLength = 0.15 + (window.currentMoonArrowLength - 0.5) * (0.25 / 9.5);
+  const moonHeadWidth = 0.1 + (window.currentMoonArrowLength - 0.5) * (0.15 / 9.5);
+  moonArrow.setLength(window.currentMoonArrowLength, moonHeadLength, moonHeadWidth);
+
+  // Update angle text and position sprite along the bisector of Sun and Moon directions
+  const angleRad = localToSun.angleTo(localToMoon);
+  const angleDeg = angleRad * 180 / Math.PI;
+  updateAngleText(`${angleDeg.toFixed(1)}°`);
+
+  let bisector = new THREE.Vector3().addVectors(localToSun, localToMoon);
+  if (bisector.lengthSq() < 0.0001) {
+    bisector.set(-localToSun.z, 0, localToSun.x);
+  }
+  bisector.normalize();
+  const angleSpritePos = bisector.clone().multiplyScalar(window.currentSunArrowLength * 0.5);
+  angleSprite.position.copy(angleSpritePos);
+  angleSprite.material.opacity = Math.max(0, Math.min(1, arrowT));
+
+  // Update arc connecting the two lines
+  const positions = arcGeometry.attributes.position.array;
+  const qStart = new THREE.Quaternion();
+  const qEnd = new THREE.Quaternion().setFromUnitVectors(localToSun, localToMoon);
+  const tempVec = new THREE.Vector3();
+  const arcRadius = window.currentSunArrowLength * 0.4;
+  for (let i = 0; i <= arcSegments; i++) {
+    const t = i / arcSegments;
+    const q = new THREE.Quaternion().slerpQuaternions(qStart, qEnd, t);
+    tempVec.copy(localToSun).applyQuaternion(q).multiplyScalar(arcRadius);
+    positions[i * 3] = tempVec.x;
+    positions[i * 3 + 1] = tempVec.y;
+    positions[i * 3 + 2] = tempVec.z;
+  }
+  arcGeometry.attributes.position.needsUpdate = true;
+  arcMaterial.opacity = Math.max(0, Math.min(1, arrowT));
+
+  // Update Moon Telescope Camera
+  cameraMoonCam.position.copy(earthPosWorld);
+  // Move it slightly out of Earth to prevent clipping inside the mesh
+  cameraMoonCam.position.add(toMoon.clone().multiplyScalar(1.2)); 
+  cameraMoonCam.lookAt(moonPosWorld);
+
+  updateEarthCamera();
+
+  if (activeCamera === cameraExternal) {
+    controls.enabled = true;
+    controls.update();
+  } else {
+    controls.enabled = false;
+  }
+
+  // Helper to configure scene for a specific camera
+  function setupSceneForCamera(cam) {
+    // Reset global visibilities
+    earth.visible = true;
+    if(window.moonOrbitPath) window.moonOrbitPath.visible = true;
+    if(window.phaseLabels) window.phaseLabels.forEach(l => l.visible = true);
+    if(window.clockGroup) window.clockGroup.visible = true;
+
+    if (cam === cameraExternal) {
+      sun.material.visible = true;
+      window.sunSprite.visible = false;
+      moon.material.visible = true;
+      if (window.moonSprite) window.moonSprite.visible = false;
+      if (window.sunArrow) window.sunArrow.visible = true;
+      if (window.sunArrowSprite) {
+        window.sunArrowSprite.visible = (window.currentSunArrowLength > 0.6 && (window.sunEventText === 'Sunrise' || window.sunEventText === 'Sunset'));
+      }
+      if (window.moonArrow) window.moonArrow.visible = true;
+      if (window.angleSprite) {
+        window.angleSprite.visible = (window.currentSunArrowLength > 0.6 && (window.sunEventText === 'Sunrise' || window.sunEventText === 'Sunset'));
+      }
+      if (window.arcLine) {
+        window.arcLine.visible = (window.currentSunArrowLength > 0.6 && (window.sunEventText === 'Sunrise' || window.sunEventText === 'Sunset'));
+      }
+      
+      scene.background = new THREE.Color(0x000000);
+      starField.visible = true;
+      starsMaterial.transparent = false;
+      starsMaterial.opacity = 1.0;
+      horizonPlane.visible = false;
+      viewArrow.visible = true; // Show blue arrow
+    } else if (cam === cameraMoonCam) {
+      sun.material.visible = false;
+      window.sunSprite.visible = false;
+      earth.visible = false; // Don't see Earth in telescope
+      if(window.moonOrbitPath) window.moonOrbitPath.visible = false;
+      if(window.phaseLabels) window.phaseLabels.forEach(l => l.visible = false);
+      if(window.clockGroup) window.clockGroup.visible = false;
+      if (window.sunArrow) window.sunArrow.visible = false;
+      if (window.sunArrowSprite) window.sunArrowSprite.visible = false;
+      if (window.moonArrow) window.moonArrow.visible = false;
+      if (window.angleSprite) window.angleSprite.visible = false;
+      if (window.arcLine) window.arcLine.visible = false;
+      
+      moon.material.visible = true;
+      if (window.moonSprite) window.moonSprite.visible = false;
+      
+      scene.background = window.currentSkyColor || new THREE.Color(0x000000);
+      starField.visible = false; // Clean background for moon view
+      horizonPlane.visible = false;
+      viewArrow.visible = false;
+    } else {
+      if (window.sunArrow) window.sunArrow.visible = false;
+      if (window.sunArrowSprite) window.sunArrowSprite.visible = false;
+      if (window.moonArrow) window.moonArrow.visible = false;
+      if (window.angleSprite) window.angleSprite.visible = false;
+      if (window.arcLine) window.arcLine.visible = false;
+      sun.material.visible = false;
+      window.sunSprite.visible = true;
+      if(window.clockGroup) window.clockGroup.visible = false;
+      
+      moon.material.visible = false; // Hide 3D Moon in Earth view to avoid FOV stretching
+      if (window.moonSprite) window.moonSprite.visible = true; // Show 2D Sprite instead
+      
+      // Earth Camera - Dynamic Sky
+      let sunElevation = 0;
+      if (window.currentZenithDir) {
+         sunElevation = toSun.dot(window.currentZenithDir);
+      }
+      scene.background = window.currentSkyColor || new THREE.Color(0x000000);
+      
+      // Smoothly fade stars
+      if (sunElevation > 0.1) {
+         starField.visible = false;
+      } else if (sunElevation > -0.2) {
+         starField.visible = true;
+         starsMaterial.transparent = true;
+         starsMaterial.opacity = 1.0 - ((sunElevation + 0.2) / 0.3);
+      } else {
+         starField.visible = true;
+         starsMaterial.transparent = true;
+         starsMaterial.opacity = 1.0;
+      }
+      
+      horizonPlane.visible = true;
+      viewArrow.visible = false; // Hide blue arrow
+    }
+  }
+
+  // --- Picture-in-Picture Rendering ---
+  renderer.setScissorTest(false);
+  renderer.clear();
+  renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+  
+  setupSceneForCamera(activeCamera);
+  renderer.render(scene, activeCamera);
+
+  // PIP Camera (Earth View or External View depending on active camera)
+  const pipCam = (activeCamera === cameraExternal) ? cameraEarth : cameraExternal;
+  
+  const pipWidth = window.innerWidth * 0.3;
+  const pipHeight = window.innerHeight * 0.3;
+  const padding = 20;
+
+  // Moon Telescope PIP dimensions (square representation)
+  const moonCamWidth = pipWidth * 0.35; 
+  const moonCamHeight = pipWidth * 0.35; 
+
+  // Position PIP windows side-by-side: Moon telescope on the left, Earth view on the right
+  const moonCamX = window.innerWidth - pipWidth - moonCamWidth - padding - 15;
+  const moonCamY = padding;
+
+  const pipX = window.innerWidth - pipWidth - padding;
+  const pipY = padding;
+
+  // Render Earth View PIP
+  renderer.setScissorTest(true);
+  renderer.setScissor(pipX, pipY, pipWidth, pipHeight);
+  renderer.setViewport(pipX, pipY, pipWidth, pipHeight);
+  
+  setupSceneForCamera(pipCam);
+  renderer.render(scene, pipCam);
+
+  // Render Moon Telescope PIP
+  cameraMoonCam.aspect = moonCamWidth / moonCamHeight;
+  cameraMoonCam.updateProjectionMatrix();
+
+  renderer.setScissor(moonCamX, moonCamY, moonCamWidth, moonCamHeight);
+  renderer.setViewport(moonCamX, moonCamY, moonCamWidth, moonCamHeight);
+  
+  setupSceneForCamera(cameraMoonCam);
+  renderer.render(scene, cameraMoonCam);
+
+  // Draw border overlay for Earth View PIP
+  if (!window.pipBorderDiv) {
+    window.pipBorderDiv = document.createElement("div");
+    window.pipBorderDiv.style.position = "absolute";
+    window.pipBorderDiv.style.border = "1px solid rgba(255,255,255,0.4)";
+    window.pipBorderDiv.style.pointerEvents = "none";
+    window.pipBorderDiv.style.zIndex = "11";
+    document.body.appendChild(window.pipBorderDiv);
+  }
+  window.pipBorderDiv.style.left = `${pipX}px`;
+  window.pipBorderDiv.style.top = `${window.innerHeight - pipY - pipHeight}px`;
+  window.pipBorderDiv.style.width = `${pipWidth}px`;
+  window.pipBorderDiv.style.height = `${pipHeight}px`;
+
+  // Draw border overlay for telescope PIP
+  if (!window.moonTelescopeDiv) {
+    window.moonTelescopeDiv = document.createElement("div");
+    window.moonTelescopeDiv.style.position = "absolute";
+    window.moonTelescopeDiv.style.border = "1px solid rgba(255,255,255,0.4)";
+    window.moonTelescopeDiv.style.pointerEvents = "none";
+    window.moonTelescopeDiv.style.zIndex = "11";
+    document.body.appendChild(window.moonTelescopeDiv);
+  }
+  window.moonTelescopeDiv.style.left = `${moonCamX}px`;
+  window.moonTelescopeDiv.style.top = `${window.innerHeight - moonCamY - moonCamHeight}px`;
+  window.moonTelescopeDiv.style.width = `${moonCamWidth}px`;
+  window.moonTelescopeDiv.style.height = `${moonCamHeight}px`;
+
+  // Dynamically position HTML pipOverlay text above the Earth View PIP
+  const pipOverlay = document.getElementById("pipOverlay");
+  if (pipOverlay) {
+    pipOverlay.style.left = `${pipX}px`;
+    pipOverlay.style.top = `${window.innerHeight - pipY - pipHeight}px`;
+    pipOverlay.style.width = `${pipWidth}px`;
+    pipOverlay.style.height = `${pipHeight}px`;
+    pipOverlay.style.bottom = "auto";
+    pipOverlay.style.right = "auto";
+  }
+
+  // Dynamically position HTML moonTimeLabel text above the Moon Telescope View PIP
+  const moonTimeLabel = document.getElementById("moonTimeLabel");
+  if (moonTimeLabel) {
+    let angle = earth.rotation.y % (Math.PI * 2);
+    if (angle < 0) angle += Math.PI * 2;
+    let h = (angle * 12 / Math.PI) % 24;
+    let displayHrs = Math.floor(h);
+    let mins = Math.floor((h % 1) * 60);
+    const timeString = `${displayHrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    
+    moonTimeLabel.innerText = timeString;
+    moonTimeLabel.style.left = `${moonCamX}px`;
+    moonTimeLabel.style.width = `${moonCamWidth}px`;
+    // Place it exactly 24px above the top border of the Moon Telescope window
+    moonTimeLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - 24}px`;
+    moonTimeLabel.style.bottom = "auto";
+    moonTimeLabel.style.right = "auto";
+  }
+
+  const moonDateLabel = document.getElementById("moonDateLabel");
+  if (moonDateLabel) {
+    const baseDate = new Date(2026, 0, 1);
+    baseDate.setDate(baseDate.getDate() + Math.floor(daysPassed));
+    const dateString = baseDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    moonDateLabel.innerText = dateString;
+    moonDateLabel.style.left = `${moonCamX}px`;
+    moonDateLabel.style.width = `${moonCamWidth}px`;
+    // Place it exactly 48px above the top border of the Moon Telescope window
+    moonDateLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - 48}px`;
+    moonDateLabel.style.bottom = "auto";
+    moonDateLabel.style.right = "auto";
+  }
+
+  const moonPhaseLabel = document.getElementById("moonPhaseLabel");
+  if (moonPhaseLabel) {
+    if (phaseName === "New Moon" || phaseName === "Full Moon") {
+      moonPhaseLabel.innerText = phaseName;
+      moonPhaseLabel.style.display = "block";
+    } else {
+      moonPhaseLabel.innerText = "";
+      moonPhaseLabel.style.display = "none";
+    }
+    moonPhaseLabel.style.left = `${moonCamX}px`;
+    moonPhaseLabel.style.width = `${moonCamWidth}px`;
+    // Place it exactly 72px above the top border of the Moon Telescope window
+    moonPhaseLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - 72}px`;
+    moonPhaseLabel.style.bottom = "auto";
+    moonPhaseLabel.style.right = "auto";
+  }
+}
+
+animate();
+
+window.addEventListener("resize", () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  cameraExternal.aspect = window.innerWidth / window.innerHeight;
+  cameraExternal.updateProjectionMatrix();
+  cameraEarth.aspect = window.innerWidth / window.innerHeight;
+  cameraEarth.updateProjectionMatrix();
+});
+</script>
+
+</body>
+</html>
