@@ -787,6 +787,9 @@ function animate() {
   setupSceneForCamera(activeCamera);
   renderer.render(scene, activeCamera);
 
+  // PIP Camera (Earth View or External View depending on active camera)
+  const pipCam = (activeCamera === cameraExternal) ? cameraEarth : cameraExternal;
+
   // Base height for the Earth view PIP, bounded by both screen height and width
   const padding = 20;
   const maxPipHeight = window.innerHeight * 0.35;
