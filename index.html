@@ -790,20 +790,34 @@ function animate() {
   // PIP Camera (Earth View or External View depending on active camera)
   const pipCam = (activeCamera === cameraExternal) ? cameraEarth : cameraExternal;
 
-  // Base height for the Earth view PIP, bounded by both screen height and width
+  // Base height for the Earth view PIP
   const padding = 20;
-  const maxPipHeight = window.innerHeight * 0.35;
+  const aspect = window.innerWidth / window.innerHeight;
+  
+  // Base target height: 30% of screen height
+  let pipHeight = window.innerHeight * 0.30;
+  
+  // Constrain by total available width
   const maxTotalWidth = window.innerWidth - (padding * 2);
+  const totalLabelsRatio = 72 / 250; 
+  // pipWidth = pipHeight * aspect
+  // moonCamWidth = pipHeight * (1 - totalLabelsRatio)
+  // totalWidth = pipHeight * (aspect + 1 - totalLabelsRatio) + 15
+  const heightFromWidth = (maxTotalWidth - 15) / (aspect + 1 - totalLabelsRatio);
   
-  // Total width ratio: pipWidth (1.77) + gap (15px) + moonCamWidth (~0.712)
-  // pipHeight * 1.77 + 15 + pipHeight * 0.712 = pipHeight * 2.482 + 15
-  const heightFromWidth = (maxTotalWidth - 15) / 2.482;
+  if (pipHeight > heightFromWidth) {
+      pipHeight = heightFromWidth;
+  }
   
-  const pipHeight = Math.max(100, Math.min(maxPipHeight, heightFromWidth, 250)); 
-  const pipWidth = pipHeight * 1.77; // 16:9 ratio for Earth view
+  // Cap max and min reasonable sizes
+  if (pipHeight > 250) pipHeight = 250;
+  const minLegibleHeight = window.innerHeight * 0.15;
+  if (pipHeight < minLegibleHeight) pipHeight = minLegibleHeight;
+
+  // The PIP window perfectly maintains the main window's aspect ratio to prevent squishing
+  const pipWidth = pipHeight * aspect; 
   
   // Moon Telescope PIP dimensions (square representation, aligned with labels)
-  const totalLabelsRatio = 72 / 250; // Maintain original proportion
   const labelHeight = pipHeight * (totalLabelsRatio / 3);
   const totalLabelsHeight = labelHeight * 3;
   const moonCamHeight = pipHeight - totalLabelsHeight;
@@ -873,6 +887,12 @@ function animate() {
     pipOverlay.style.height = `${pipHeight}px`;
     pipOverlay.style.bottom = "auto";
     pipOverlay.style.right = "auto";
+    
+    // Scale the Sky text inside the overlay
+    const pipSunEvent = document.getElementById("pipSunEvent");
+    if (pipSunEvent) {
+      pipSunEvent.style.fontSize = `${Math.max(10, Math.floor(pipHeight * 0.12))}px`;
+    }
   }
 
   // Dynamically position HTML moonTimeLabel text above the Moon Telescope View PIP
