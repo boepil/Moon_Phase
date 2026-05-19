@@ -752,7 +752,7 @@ function animate() {
       if (window.moonSprite) window.moonSprite.visible = false;
       
       let moonBgColor = new THREE.Color(0xcccc00); // Base yellow background
-      if (speedMode === 'minutes' && window.moonElevation < 0.17) {
+      if (window.moonElevation < 0.17) {
          // Blend towards warm orange/red as it nears the horizon
          let t = Math.max(0, window.moonElevation) / 0.17; 
          moonBgColor = new THREE.Color(0xff4500).lerp(new THREE.Color(0xcccc00), t);
