@@ -681,14 +681,9 @@ function animate() {
   cameraMoonCam.lookAt(moonPosWorld);
   
   // Apply vertical offset so the moon rises and sets relative to the window frame (horizon)
+  // Maps elevation 1.0 (zenith) to centered, 0.0 (horizon) to bottom edge, and negative to completely hidden
   const d = 1.1;
-  let targetOffset = 0; // Centered by default
-  if (speedMode === 'minutes') {
-      // Map moon elevation from -0.18 (bottom, hidden) to +0.18 (centered)
-      let mappedProgress = (0.18 - window.moonElevation) / 0.36; 
-      mappedProgress = Math.max(0, Math.min(1, mappedProgress));
-      targetOffset = mappedProgress * 2.2;
-  }
+  const targetOffset = d * (1 - window.moonElevation);
   cameraMoonCam.top = d + targetOffset;
   cameraMoonCam.bottom = -d + targetOffset;
   cameraMoonCam.left = -d;
@@ -751,13 +746,8 @@ function animate() {
       moon.material.visible = true;
       if (window.moonSprite) window.moonSprite.visible = false;
       
-      let moonBgColor = new THREE.Color(0xcccc00); // Base yellow background
-      if (window.moonElevation < 0.17) {
-         // Blend towards warm orange/red as it nears the horizon
-         let t = Math.max(0, window.moonElevation) / 0.17; 
-         moonBgColor = new THREE.Color(0xff4500).lerp(new THREE.Color(0xcccc00), t);
-      }
-      scene.background = moonBgColor;
+      // Use the exact same dynamic sky color as the Earth view (Blue -> Orange -> Black)
+      scene.background = window.currentSkyColor || new THREE.Color(0x000000);
       
       starField.visible = false; // Clean background for moon view
       horizonPlane.visible = false;
