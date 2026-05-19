@@ -62,7 +62,8 @@ cameraExternal.position.set(-5.43, 3.80, -13.19);
 cameraExternal.lookAt(-1.10, 0.55, -7.87);
 
 const cameraEarth = new THREE.PerspectiveCamera(160, window.innerWidth/window.innerHeight, 0.1, 1000);
-const cameraMoonCam = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+const dCam = 0.4;
+const cameraMoonCam = new THREE.OrthographicCamera(-dCam, dCam, dCam, -dCam, 0.1, 1000);
 
 let activeCamera = cameraExternal;
 
@@ -682,7 +683,7 @@ function animate() {
   
   // Apply vertical offset so the moon rises and sets relative to the window frame (horizon)
   // Maps elevation 1.0 (zenith) to centered, 0.0 (horizon) to bottom edge, and negative to completely hidden
-  const d = 1.1;
+  const d = 0.4;
   const targetOffset = d * (1 - window.moonElevation);
   cameraMoonCam.top = d + targetOffset;
   cameraMoonCam.bottom = -d + targetOffset;
