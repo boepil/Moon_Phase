@@ -25,13 +25,15 @@
 </head>
 <body>
 
+<button id="playPauseBtn" style="position: absolute; top: 20px; left: 20px; z-index: 20; font-family: sans-serif; font-size: 16px; padding: 8px 16px; cursor: pointer; background: rgba(0,0,0,0.8); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 4px; font-weight: bold;">Pause</button>
+
 <div id="pipOverlay" style="position: absolute; bottom: 20px; right: 20px; width: 30%; height: 30%; pointer-events: none; padding: 10px; box-sizing: border-box; text-align: left; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10;">
   <span id="pipSunEvent" style="color: #ffcc00; font-size: 1.5em; font-weight: bold;"></span>
 </div>
 
-<div id="moonTimeLabel" style="position: absolute; color: #ffff00; font-family: monospace; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 12; text-align: center; background: rgba(0,0,0,0.65); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); box-sizing: border-box;"></div>
-<div id="moonDateLabel" style="position: absolute; color: #ffffff; font-family: monospace; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 12; text-align: center; background: rgba(0,0,0,0.65); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); box-sizing: border-box;"></div>
-<div id="moonPhaseLabel" style="position: absolute; color: #ffcc00; font-family: monospace; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 12; text-align: center; background: rgba(0,0,0,0.65); padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.25); box-sizing: border-box;"></div>
+<div id="moonTimeLabel" style="position: absolute; color: #ffff00; font-family: monospace; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 12; text-align: center; background: black; line-height: 24px; border: 1px solid rgba(255,255,255,0.4); border-bottom: none; box-sizing: border-box;"></div>
+<div id="moonDateLabel" style="position: absolute; color: #ffffff; font-family: monospace; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 12; text-align: center; background: black; line-height: 24px; border: 1px solid rgba(255,255,255,0.4); border-bottom: none; box-sizing: border-box;"></div>
+<div id="moonPhaseLabel" style="position: absolute; color: #ffcc00; font-family: monospace; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 12; text-align: center; background: black; line-height: 24px; border: 1px solid rgba(255,255,255,0.4); border-bottom: none; box-sizing: border-box;"></div>
 
 
 <script type="module">
@@ -44,6 +46,12 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.autoClear = false; // Required for Picture-in-Picture
 document.body.appendChild(renderer.domElement);
+
+let isPaused = false;
+document.getElementById('playPauseBtn').addEventListener('click', (e) => {
+  isPaused = !isPaused;
+  e.target.innerText = isPaused ? "Play" : "Pause";
+});
 
 // Time & Orbital Parameters initialized to match the constellation of the user image
 let daysPassed = 145.7604;
@@ -535,18 +543,18 @@ function animate() {
   const MOON_ORBIT_SPEED = EARTH_ROT_SPEED / 29.5; // 1 month
   const EARTH_ORBIT_SPEED = MOON_ORBIT_SPEED / 12; // 1 year (approx)
 
-  earthRotation += EARTH_ROT_SPEED;
+  if (!isPaused) {
+    earthRotation += EARTH_ROT_SPEED;
+    sunPivot.rotation.y += EARTH_ORBIT_SPEED;
+    moonOrbit += MOON_ORBIT_SPEED;
+    daysPassed += (EARTH_ROT_SPEED / (Math.PI * 2));
+  }
+
   earth.rotation.y = earthRotation;
-
-  sunPivot.rotation.y += EARTH_ORBIT_SPEED;
-
-  moonOrbit += MOON_ORBIT_SPEED;
   moonPivot.rotation.y = moonOrbit;
 
   // Tidal locking
   moon.rotation.y = moonOrbit;
-
-  daysPassed += (EARTH_ROT_SPEED / (Math.PI * 2));
   const timeEl = document.getElementById("time");
   if (timeEl) timeEl.innerText = `${daysPassed.toFixed(1)} days`;
   
@@ -782,13 +790,17 @@ function animate() {
   // PIP Camera (Earth View or External View depending on active camera)
   const pipCam = (activeCamera === cameraExternal) ? cameraEarth : cameraExternal;
   
-  const pipWidth = window.innerWidth * 0.3;
-  const pipHeight = window.innerHeight * 0.3;
+  // Base height for the Earth view PIP
+  const pipHeight = Math.max(window.innerHeight * 0.35, 250); 
+  const pipWidth = pipHeight * 1.77; // 16:9 ratio for Earth view
+  
+  // Moon Telescope PIP dimensions (square representation, aligned with labels)
+  const labelHeight = 24;
+  const totalLabelsHeight = labelHeight * 3;
+  const moonCamHeight = pipHeight - totalLabelsHeight;
+  const moonCamWidth = moonCamHeight; // Square
+  
   const padding = 20;
-
-  // Moon Telescope PIP dimensions (square representation)
-  const moonCamWidth = pipWidth * 0.35; 
-  const moonCamHeight = pipWidth * 0.35; 
 
   // Position PIP windows side-by-side: Moon telescope on the left, Earth view on the right
   const moonCamX = window.innerWidth - pipWidth - moonCamWidth - padding - 15;
@@ -867,7 +879,7 @@ function animate() {
     moonTimeLabel.innerText = timeString;
     moonTimeLabel.style.left = `${moonCamX}px`;
     moonTimeLabel.style.width = `${moonCamWidth}px`;
-    // Place it exactly 24px above the top border of the Moon Telescope window
+    moonTimeLabel.style.height = `24px`;
     moonTimeLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - 24}px`;
     moonTimeLabel.style.bottom = "auto";
     moonTimeLabel.style.right = "auto";
@@ -881,7 +893,7 @@ function animate() {
     moonDateLabel.innerText = dateString;
     moonDateLabel.style.left = `${moonCamX}px`;
     moonDateLabel.style.width = `${moonCamWidth}px`;
-    // Place it exactly 48px above the top border of the Moon Telescope window
+    moonDateLabel.style.height = `24px`;
     moonDateLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - 48}px`;
     moonDateLabel.style.bottom = "auto";
     moonDateLabel.style.right = "auto";
@@ -894,11 +906,11 @@ function animate() {
       moonPhaseLabel.style.display = "block";
     } else {
       moonPhaseLabel.innerText = "";
-      moonPhaseLabel.style.display = "none";
+      moonPhaseLabel.style.display = "block"; // Keep it rendering to hold the fixed layout space
     }
     moonPhaseLabel.style.left = `${moonCamX}px`;
     moonPhaseLabel.style.width = `${moonCamWidth}px`;
-    // Place it exactly 72px above the top border of the Moon Telescope window
+    moonPhaseLabel.style.height = `24px`;
     moonPhaseLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - 72}px`;
     moonPhaseLabel.style.bottom = "auto";
     moonPhaseLabel.style.right = "auto";
