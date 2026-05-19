@@ -485,7 +485,9 @@ function animate() {
   // Zenith direction for current sunElevation
   const zenithDir = new THREE.Vector3(1, 0, 0).transformDirection(earth.matrixWorld);
   const sunElevation = toSun.dot(zenithDir);
+  const moonElevation = toMoon.dot(zenithDir);
   window.currentZenithDir = zenithDir; // Save for camera setup
+  window.moonElevation = moonElevation; // Save for Moon PIP rendering
 
   // Dynamic sky color calculation
   const eastDir = new THREE.Vector3(0, 0, 1).transformDirection(earth.matrixWorld);
@@ -680,6 +682,15 @@ function animate() {
   // Move it slightly out of Earth to prevent clipping inside the mesh
   cameraMoonCam.position.add(toMoon.clone().multiplyScalar(1.2)); 
   cameraMoonCam.lookAt(moonPosWorld);
+  
+  // Apply vertical offset so the moon rises and sets relative to the window frame (horizon)
+  const d = 1.1;
+  const targetOffset = d * (1 - window.moonElevation);
+  cameraMoonCam.top = d + targetOffset;
+  cameraMoonCam.bottom = -d + targetOffset;
+  cameraMoonCam.left = -d;
+  cameraMoonCam.right = d;
+  cameraMoonCam.updateProjectionMatrix();
 
   updateEarthCamera();
 
@@ -737,7 +748,14 @@ function animate() {
       moon.material.visible = true;
       if (window.moonSprite) window.moonSprite.visible = false;
       
-      scene.background = window.currentSkyColor || new THREE.Color(0x000000);
+      let moonBgColor = new THREE.Color(0xcccc00); // Base yellow background
+      if (window.moonElevation < 0.17) {
+         // Blend towards warm orange/red as it nears the horizon
+         let t = Math.max(0, window.moonElevation) / 0.17; 
+         moonBgColor = new THREE.Color(0xff4500).lerp(new THREE.Color(0xcccc00), t);
+      }
+      scene.background = moonBgColor;
+      
       starField.visible = false; // Clean background for moon view
       horizonPlane.visible = false;
       viewArrow.visible = false;
@@ -841,9 +859,6 @@ function animate() {
   renderer.render(scene, pipCam);
 
   // Render Moon Telescope PIP
-  cameraMoonCam.aspect = moonCamWidth / moonCamHeight;
-  cameraMoonCam.updateProjectionMatrix();
-
   renderer.setScissor(moonCamX, moonCamY, moonCamWidth, moonCamHeight);
   renderer.setViewport(moonCamX, moonCamY, moonCamWidth, moonCamHeight);
   
