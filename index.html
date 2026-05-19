@@ -684,7 +684,10 @@ function animate() {
   const d = 1.1;
   let targetOffset = 0; // Centered by default
   if (speedMode === 'minutes') {
-      targetOffset = d * (1 - window.moonElevation);
+      // Map moon elevation from -0.18 (bottom, hidden) to +0.18 (centered)
+      let mappedProgress = (0.18 - window.moonElevation) / 0.36; 
+      mappedProgress = Math.max(0, Math.min(1, mappedProgress));
+      targetOffset = mappedProgress * 2.2;
   }
   cameraMoonCam.top = d + targetOffset;
   cameraMoonCam.bottom = -d + targetOffset;
