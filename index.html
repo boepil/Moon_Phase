@@ -685,7 +685,10 @@ function animate() {
   
   // Apply vertical offset so the moon rises and sets relative to the window frame (horizon)
   const d = 1.1;
-  const targetOffset = d * (1 - window.moonElevation);
+  let targetOffset = 0; // Centered by default
+  if (speedMode === 'minutes') {
+      targetOffset = d * (1 - window.moonElevation);
+  }
   cameraMoonCam.top = d + targetOffset;
   cameraMoonCam.bottom = -d + targetOffset;
   cameraMoonCam.left = -d;
@@ -749,7 +752,7 @@ function animate() {
       if (window.moonSprite) window.moonSprite.visible = false;
       
       let moonBgColor = new THREE.Color(0xcccc00); // Base yellow background
-      if (window.moonElevation < 0.17) {
+      if (speedMode === 'minutes' && window.moonElevation < 0.17) {
          // Blend towards warm orange/red as it nears the horizon
          let t = Math.max(0, window.moonElevation) / 0.17; 
          moonBgColor = new THREE.Color(0xff4500).lerp(new THREE.Color(0xcccc00), t);
@@ -805,26 +808,15 @@ function animate() {
   setupSceneForCamera(activeCamera);
   renderer.render(scene, activeCamera);
 
-  // PIP Camera (Earth View or External View depending on active camera)
-  const pipCam = (activeCamera === cameraExternal) ? cameraEarth : cameraExternal;
-
-  // Base height for the Earth view PIP
+  // Base target height for Moon PIP: 30% of screen height
   const padding = 20;
-  const aspect = window.innerWidth / window.innerHeight;
-  
-  // Base target height: 30% of screen height
   let pipHeight = window.innerHeight * 0.30;
   
   // Constrain by total available width
   const maxTotalWidth = window.innerWidth - (padding * 2);
   const totalLabelsRatio = 72 / 250; 
-  // pipWidth = pipHeight * aspect
-  // moonCamWidth = pipHeight * (1 - totalLabelsRatio)
-  // totalWidth = pipHeight * (aspect + 1 - totalLabelsRatio) + 15
-  const heightFromWidth = (maxTotalWidth - 15) / (aspect + 1 - totalLabelsRatio);
-  
-  if (pipHeight > heightFromWidth) {
-      pipHeight = heightFromWidth;
+  if (pipHeight > maxTotalWidth / (1 - totalLabelsRatio)) {
+      pipHeight = maxTotalWidth / (1 - totalLabelsRatio);
   }
   
   // Cap max and min reasonable sizes
@@ -832,9 +824,6 @@ function animate() {
   const minLegibleHeight = window.innerHeight * 0.15;
   if (pipHeight < minLegibleHeight) pipHeight = minLegibleHeight;
 
-  // The PIP window perfectly maintains the main window's aspect ratio to prevent squishing
-  const pipWidth = pipHeight * aspect; 
-  
   // Moon Telescope PIP dimensions (square representation, aligned with labels)
   const labelHeight = pipHeight * (totalLabelsRatio / 3);
   const totalLabelsHeight = labelHeight * 3;
@@ -843,20 +832,12 @@ function animate() {
   
   const fontSize = Math.max(8, Math.floor(labelHeight * 0.6));
 
-  // Position PIP windows side-by-side: Moon telescope on the left, Earth view on the right
-  const moonCamX = window.innerWidth - pipWidth - moonCamWidth - padding - 15;
+  // Position Moon Telescope in the bottom right corner
+  const moonCamX = window.innerWidth - moonCamWidth - padding;
   const moonCamY = padding;
 
-  const pipX = window.innerWidth - pipWidth - padding;
-  const pipY = padding;
-
-  // Render Earth View PIP
+  // Render Moon Telescope PIP
   renderer.setScissorTest(true);
-  renderer.setScissor(pipX, pipY, pipWidth, pipHeight);
-  renderer.setViewport(pipX, pipY, pipWidth, pipHeight);
-  
-  setupSceneForCamera(pipCam);
-  renderer.render(scene, pipCam);
 
   // Render Moon Telescope PIP
   renderer.setScissor(moonCamX, moonCamY, moonCamWidth, moonCamHeight);
@@ -865,19 +846,10 @@ function animate() {
   setupSceneForCamera(cameraMoonCam);
   renderer.render(scene, cameraMoonCam);
 
-  // Draw border overlay for Earth View PIP
-  if (!window.pipBorderDiv) {
-    window.pipBorderDiv = document.createElement("div");
-    window.pipBorderDiv.style.position = "absolute";
-    window.pipBorderDiv.style.border = "1px solid rgba(255,255,255,0.4)";
-    window.pipBorderDiv.style.pointerEvents = "none";
-    window.pipBorderDiv.style.zIndex = "11";
-    document.body.appendChild(window.pipBorderDiv);
+  // Hide the old Earth View border if it exists
+  if (window.pipBorderDiv) {
+    window.pipBorderDiv.style.display = "none";
   }
-  window.pipBorderDiv.style.left = `${pipX}px`;
-  window.pipBorderDiv.style.top = `${window.innerHeight - pipY - pipHeight}px`;
-  window.pipBorderDiv.style.width = `${pipWidth}px`;
-  window.pipBorderDiv.style.height = `${pipHeight}px`;
 
   // Draw border overlay for telescope PIP
   if (!window.moonTelescopeDiv) {
@@ -893,20 +865,20 @@ function animate() {
   window.moonTelescopeDiv.style.width = `${moonCamWidth}px`;
   window.moonTelescopeDiv.style.height = `${moonCamHeight}px`;
 
-  // Dynamically position HTML pipOverlay text above the Earth View PIP
+  // Dynamically position HTML pipOverlay text (Sky Event) to bottom left
   const pipOverlay = document.getElementById("pipOverlay");
   if (pipOverlay) {
-    pipOverlay.style.left = `${pipX}px`;
-    pipOverlay.style.top = `${window.innerHeight - pipY - pipHeight}px`;
-    pipOverlay.style.width = `${pipWidth}px`;
-    pipOverlay.style.height = `${pipHeight}px`;
-    pipOverlay.style.bottom = "auto";
+    pipOverlay.style.left = `${padding}px`;
+    pipOverlay.style.bottom = `${padding}px`;
+    pipOverlay.style.width = "auto";
+    pipOverlay.style.height = "auto";
+    pipOverlay.style.top = "auto";
     pipOverlay.style.right = "auto";
     
     // Scale the Sky text inside the overlay
     const pipSunEvent = document.getElementById("pipSunEvent");
     if (pipSunEvent) {
-      pipSunEvent.style.fontSize = `${Math.max(10, Math.floor(pipHeight * 0.12))}px`;
+      pipSunEvent.style.fontSize = `${Math.max(16, Math.floor(window.innerHeight * 0.03))}px`;
     }
   }
 
