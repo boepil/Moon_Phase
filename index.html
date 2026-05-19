@@ -27,9 +27,7 @@
 
 <button id="playPauseBtn" style="position: absolute; top: 20px; left: 20px; z-index: 20; font-family: sans-serif; font-size: 16px; padding: 8px 16px; cursor: pointer; background: rgba(0,0,0,0.8); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 4px; font-weight: bold;">Pause</button>
 
-<div id="pipOverlay" style="position: absolute; bottom: 20px; right: 20px; width: 30%; height: 30%; pointer-events: none; padding: 10px; box-sizing: border-box; text-align: left; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 10;">
-  <span id="pipSunEvent" style="color: #ffcc00; font-size: 1.5em; font-weight: bold;"></span>
-</div>
+
 
 <div id="moonTimeLabel" style="position: absolute; color: #ffff00; font-family: monospace; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 12; text-align: center; background: black; line-height: 24px; border: 1px solid rgba(255,255,255,0.4); border-bottom: none; box-sizing: border-box;"></div>
 <div id="moonDateLabel" style="position: absolute; color: #ffffff; font-family: monospace; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; pointer-events: none; z-index: 12; text-align: center; background: black; line-height: 24px; border: 1px solid rgba(255,255,255,0.4); border-bottom: none; box-sizing: border-box;"></div>
@@ -583,7 +581,6 @@ function animate() {
      if (toSun.dot(eastDir) < 0) sunEventText = "Sunrise";
      else sunEventText = "Sunset";
   }
-  document.getElementById("pipSunEvent").innerText = sunEventText ? `Sky: ${sunEventText}` : "";
   window.sunEventText = sunEventText;
 
   // Calculate local direction to Sun for sunArrow
@@ -865,22 +862,7 @@ function animate() {
   window.moonTelescopeDiv.style.width = `${moonCamWidth}px`;
   window.moonTelescopeDiv.style.height = `${moonCamHeight}px`;
 
-  // Dynamically position HTML pipOverlay text (Sky Event) to bottom left
-  const pipOverlay = document.getElementById("pipOverlay");
-  if (pipOverlay) {
-    pipOverlay.style.left = `${padding}px`;
-    pipOverlay.style.bottom = `${padding}px`;
-    pipOverlay.style.width = "auto";
-    pipOverlay.style.height = "auto";
-    pipOverlay.style.top = "auto";
-    pipOverlay.style.right = "auto";
-    
-    // Scale the Sky text inside the overlay
-    const pipSunEvent = document.getElementById("pipSunEvent");
-    if (pipSunEvent) {
-      pipSunEvent.style.fontSize = `${Math.max(16, Math.floor(window.innerHeight * 0.03))}px`;
-    }
-  }
+
 
   // Dynamically position HTML moonTimeLabel text above the Moon Telescope View PIP
   const moonTimeLabel = document.getElementById("moonTimeLabel");
