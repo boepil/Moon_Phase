@@ -787,20 +787,26 @@ function animate() {
   setupSceneForCamera(activeCamera);
   renderer.render(scene, activeCamera);
 
-  // PIP Camera (Earth View or External View depending on active camera)
-  const pipCam = (activeCamera === cameraExternal) ? cameraEarth : cameraExternal;
+  // Base height for the Earth view PIP, bounded by both screen height and width
+  const padding = 20;
+  const maxPipHeight = window.innerHeight * 0.35;
+  const maxTotalWidth = window.innerWidth - (padding * 2);
   
-  // Base height for the Earth view PIP
-  const pipHeight = Math.max(window.innerHeight * 0.35, 250); 
+  // Total width ratio: pipWidth (1.77) + gap (15px) + moonCamWidth (~0.712)
+  // pipHeight * 1.77 + 15 + pipHeight * 0.712 = pipHeight * 2.482 + 15
+  const heightFromWidth = (maxTotalWidth - 15) / 2.482;
+  
+  const pipHeight = Math.max(100, Math.min(maxPipHeight, heightFromWidth, 250)); 
   const pipWidth = pipHeight * 1.77; // 16:9 ratio for Earth view
   
   // Moon Telescope PIP dimensions (square representation, aligned with labels)
-  const labelHeight = 24;
+  const totalLabelsRatio = 72 / 250; // Maintain original proportion
+  const labelHeight = pipHeight * (totalLabelsRatio / 3);
   const totalLabelsHeight = labelHeight * 3;
   const moonCamHeight = pipHeight - totalLabelsHeight;
   const moonCamWidth = moonCamHeight; // Square
   
-  const padding = 20;
+  const fontSize = Math.max(8, Math.floor(labelHeight * 0.6));
 
   // Position PIP windows side-by-side: Moon telescope on the left, Earth view on the right
   const moonCamX = window.innerWidth - pipWidth - moonCamWidth - padding - 15;
@@ -879,8 +885,10 @@ function animate() {
     moonTimeLabel.innerText = timeString;
     moonTimeLabel.style.left = `${moonCamX}px`;
     moonTimeLabel.style.width = `${moonCamWidth}px`;
-    moonTimeLabel.style.height = `24px`;
-    moonTimeLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - 24}px`;
+    moonTimeLabel.style.height = `${labelHeight}px`;
+    moonTimeLabel.style.lineHeight = `${labelHeight}px`;
+    moonTimeLabel.style.fontSize = `${fontSize}px`;
+    moonTimeLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - labelHeight}px`;
     moonTimeLabel.style.bottom = "auto";
     moonTimeLabel.style.right = "auto";
   }
@@ -893,8 +901,10 @@ function animate() {
     moonDateLabel.innerText = dateString;
     moonDateLabel.style.left = `${moonCamX}px`;
     moonDateLabel.style.width = `${moonCamWidth}px`;
-    moonDateLabel.style.height = `24px`;
-    moonDateLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - 48}px`;
+    moonDateLabel.style.height = `${labelHeight}px`;
+    moonDateLabel.style.lineHeight = `${labelHeight}px`;
+    moonDateLabel.style.fontSize = `${fontSize}px`;
+    moonDateLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - (labelHeight * 2)}px`;
     moonDateLabel.style.bottom = "auto";
     moonDateLabel.style.right = "auto";
   }
@@ -910,8 +920,10 @@ function animate() {
     }
     moonPhaseLabel.style.left = `${moonCamX}px`;
     moonPhaseLabel.style.width = `${moonCamWidth}px`;
-    moonPhaseLabel.style.height = `24px`;
-    moonPhaseLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - 72}px`;
+    moonPhaseLabel.style.height = `${labelHeight}px`;
+    moonPhaseLabel.style.lineHeight = `${labelHeight}px`;
+    moonPhaseLabel.style.fontSize = `${fontSize}px`;
+    moonPhaseLabel.style.top = `${window.innerHeight - moonCamY - moonCamHeight - (labelHeight * 3)}px`;
     moonPhaseLabel.style.bottom = "auto";
     moonPhaseLabel.style.right = "auto";
   }
