@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Sunג€“Earthג€“Moon Simulation</title>
+<title>Synced Twilight</title>
 <style>
   body {
     margin: 0;
@@ -70,6 +70,33 @@
   }
   #time-text {
     color: #ffff00;
+  }
+  #app-subtitle {
+    position: absolute;
+    top: 88px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(100, 180, 255, 0.7);
+    font-size: 20px;
+    font-family: serif;
+    font-style: italic;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 9;
+    user-select: none;
+  }
+  #camera-coords {
+    position: absolute;
+    bottom: 28%;
+    left: 8px;
+    color: rgba(100, 255, 120, 0.85);
+    font-size: 10px;
+    font-family: monospace;
+    pointer-events: none;
+    z-index: 20;
+    line-height: 1.6;
+    user-select: text;
   }
   #app-subtitle {
     position: absolute;
@@ -144,12 +171,18 @@
 
   <button id="playPauseBtn">Pause</button>
 
-  <div id="info-box">
-    <div id="phase-title">New Moon</div>
-    <div id="date-time-row">
-      <span id="date-text">May 27, 2026</span>
-      <span id="time-text">18:12</span>
+  <div id="skysim-viewport">
+    <div id="info-box">
+      <div id="phase-title">New Moon</div>
+      <div id="date-time-row">
+        <span id="date-text">May 27, 2026</span>
+        <span id="time-text">18:12</span>
+      </div>
     </div>
+    <div id="app-subtitle">Why Full Moons Rise at Sunset</div>
+  </div>
+  <div id="constellation-viewport"></div>
+</div>
   </div>
   <div id="app-subtitle">Why Full Moons Rise at Sunset</div>
 
@@ -181,8 +214,8 @@ let moonOrbit = 3.2100;
 let moonScaleFlipped = false;
 
 const cameraExternal = new THREE.PerspectiveCamera(60, container.clientWidth/container.clientHeight, 0.1, 1000);
-cameraExternal.position.set(-5.43, 3.80, -13.19);
-cameraExternal.lookAt(-1.10, 0.55, -7.87);
+cameraExternal.position.set(5, 4, 8);
+cameraExternal.lookAt(0, 0, 0);
 
 const cameraEarth = new THREE.PerspectiveCamera(160, container.clientWidth/container.clientHeight, 0.1, 1000);
 const dCam = 0.4;
@@ -191,12 +224,13 @@ const cameraMoonCam = new THREE.OrthographicCamera(-dCam, dCam, dCam, -dCam, 0.1
 let activeCamera = cameraExternal;
 
 const controls = new OrbitControls(cameraExternal, document.getElementById('constellation-viewport'));
-controls.target.set(-1.10, 0.55, -7.87);
+controls.target.set(0, 0, 0);
 controls.update();
 
-const sunLight = new THREE.PointLight(0xffffff, 2000); 
+const sunLight = new THREE.PointLight(0xffffff, 2000);
+sunLight.position.set(-10, 0, 0);
 scene.add(sunLight);
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+scene.add(new THREE.AmbientLight(0xffffff, 0.15));
 
 const starsGeometry = new THREE.BufferGeometry();
 const starsCount = 2000;
@@ -218,6 +252,7 @@ const sun = new THREE.Mesh(
   new THREE.SphereGeometry(3, 32, 32),
   new THREE.MeshBasicMaterial({ color: 0xffffcc })
 );
+sun.position.set(-10, 0, 0);
 scene.add(sun);
 
 const textureLoader = new THREE.TextureLoader();
@@ -229,7 +264,7 @@ sunPivot.rotation.y = 73.76875 * 2 * Math.PI / (29.5 * 12);
 scene.add(sunPivot);
 
 const earthSystem = new THREE.Object3D();
-earthSystem.position.set(10, 0, 0);
+earthSystem.position.set(0, 0, 0);
 sunPivot.add(earthSystem);
 
 const tiltedEarthGroup = new THREE.Object3D();
@@ -573,10 +608,10 @@ function animate() {
   const eastDir = new THREE.Vector3(0, 0, 1).transformDirection(earth.matrixWorld);
   const isSunrise = (toSun.dot(eastDir) < 0);
   
-  const transitionColor = isSunrise ? new THREE.Color(0x0a1931) : new THREE.Color(0x0a1931);
+  const transitionColor = new THREE.Color(0x0a1931);
   const skyColor = new THREE.Color(0x000000);
-  if (sunElevation > -0.2 && sunElevation <= 0.0) {
-      const t = (sunElevation + 0.2) / 0.2;
+  if (sunElevation > -0.5 && sunElevation <= 0.0) {
+      const t = (sunElevation + 0.5) / 0.5;
       skyColor.copy(new THREE.Color(0x000000)).lerp(transitionColor, t);
   } else if (sunElevation > 0.0 && sunElevation <= 0.2) {
       const t = sunElevation / 0.2;
@@ -616,7 +651,6 @@ function animate() {
 
   if (!isPaused) {
     earthRotation += EARTH_ROT_SPEED;
-    sunPivot.rotation.y += EARTH_ORBIT_SPEED;
     moonOrbit += MOON_ORBIT_SPEED;
     daysPassed += (EARTH_ROT_SPEED / (Math.PI * 2));
   }
@@ -904,10 +938,15 @@ function animate() {
   const E_moon = toMoon.dot(eastDirLocal);
   const alpha_moon = Math.atan2(U_moon, E_moon);
 
-  // Sun on same center as moon (y=-0.7) but 1.5x radius — peaks higher, same horizon crossing
-  const x_sun = aspect * 1.5 * Math.cos(alpha_sun);
-  const y_sun = -0.7 + 1.5 * Math.sin(alpha_sun);
+  // Sun arc: identical formula to moon arc but radius 1.2x.
+  // alpha_sun = atan2(U_sun, E_sun) already computed above — same as moon's alpha_moon.
+  // x: aspect * 1.2 * cos(alpha_sun)  — right at sunrise (alpha near 0), left at sunset (alpha near π)
+  // y: -0.4 + 1.2 * sin(alpha_sun)    — rises from horizon, peaks at top, descends
+  // Visible only when sun is above the horizon (E_sun > 0 means sun in front half)
+  const x_sun = aspect * 1.2 * Math.cos(alpha_sun);
+  const y_sun = -0.4 + 1.2 * Math.sin(alpha_sun);
   skySunSprite.position.set(x_sun, y_sun, -0.1);
+  skySunSprite.visible = (U_sun > -0.55);
   // Dynamic Sun Color Transition
   let sunColor = new THREE.Color(0xffff00);
   if (U_sun > 0.2) {
@@ -924,12 +963,12 @@ function animate() {
   }
   skySunSprite.material.color.copy(sunColor);
 
-  // Stars: fade in at night, out at dawn
-  if (U_sun < -0.15) {
+  // Stars: fade in when sun below horizon (matches sky going dark)
+  if (sunElevation < -0.4) {
     skyStarsMat.opacity = 1.0;
     skyStars.visible = true;
-  } else if (U_sun < 0.1) {
-    skyStarsMat.opacity = 1.0 - ((U_sun + 0.15) / 0.25);
+  } else if (sunElevation < 0.1) {
+    skyStarsMat.opacity = 1.0 - ((sunElevation + 0.4) / 0.5);
     skyStars.visible = true;
   } else {
     skyStars.visible = false;
@@ -994,6 +1033,16 @@ function animate() {
 
   const phaseEl = document.getElementById("phase-title");
   if (phaseEl) phaseEl.innerText = phaseName;
+
+  // Live camera coords
+  if (activeCamera === cameraExternal) {
+    const p = cameraExternal.position;
+    const t = controls.target;
+    const el = document.getElementById('camera-coords');
+    if (el) el.innerHTML =
+      `pos&nbsp;&nbsp;: (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})<br>` +
+      `target: (${t.x.toFixed(2)}, ${t.y.toFixed(2)}, ${t.z.toFixed(2)})`;
+  }
 }
 
 animate();
