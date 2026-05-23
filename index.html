@@ -814,7 +814,7 @@ function animate() {
       if (window.arcMoonLine) window.arcMoonLine.visible = false;
       moon.material.visible = true;
       if (window.moonSprite) window.moonSprite.visible = false;
-      scene.background = window.currentSkyColor || new THREE.Color(0x000000);
+      scene.background = null;
       starField.visible = false;
       horizonPlane.visible = false;
       viewArrow.visible = false;
@@ -851,6 +851,7 @@ function animate() {
 
   // --- Rendering ---
   renderer.setScissorTest(false);
+  renderer.setClearColor(0x000000, 0.0);
   renderer.clear();
 
   const containerRect = container.getBoundingClientRect();
@@ -858,10 +859,10 @@ function animate() {
   // 1. Constellation Viewport
   const constEl = document.getElementById('constellation-viewport');
   const constRect = constEl.getBoundingClientRect();
-  const constLeft = constRect.left - containerRect.left;
-  const constBottom = containerRect.bottom - constRect.bottom;
-  const constWidth = constRect.width;
-  const constHeight = constRect.height;
+  const constLeft = Math.round(constRect.left - containerRect.left);
+  const constBottom = Math.round(containerRect.bottom - constRect.bottom);
+  const constWidth = Math.round(constRect.width);
+  const constHeight = Math.round(constRect.height);
 
   renderer.setViewport(constLeft, constBottom, constWidth, constHeight);
   renderer.setScissor(constLeft, constBottom, constWidth, constHeight);
@@ -873,10 +874,10 @@ function animate() {
   // 2. Sky Simulation Viewport
   const skyEl = document.getElementById('skysim-viewport');
   const skyRect = skyEl.getBoundingClientRect();
-  const skyLeft = skyRect.left - containerRect.left;
-  const skyBottom = containerRect.bottom - skyRect.bottom;
-  const skyWidth = skyRect.width;
-  const skyHeight = skyRect.height;
+  const skyLeft = Math.round(skyRect.left - containerRect.left) + 1;
+  const skyBottom = Math.round(containerRect.bottom - skyRect.bottom) + 1;
+  const skyWidth = Math.round(skyRect.width) - 2;
+  const skyHeight = Math.round(skyRect.height) - 2;
 
   renderer.setViewport(skyLeft, skyBottom, skyWidth, skyHeight);
   renderer.setScissor(skyLeft, skyBottom, skyWidth, skyHeight);
